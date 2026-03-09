@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+<meta charset="UTF-8">
+<title>Painel do Barbeiro</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box;font-family:Arial, Helvetica, sans-serif;}
+body{background:linear-gradient(135deg,#0f0f0f,#1f1f1f);color:white;min-height:100vh;display:flex;justify-content:center;align-items:flex-start;padding:30px;}
+.container{width:100%;max-width:700px;}
+h1{text-align:center;margin-bottom:25px;}
+.card{background:#1b1b1b;padding:20px;margin-bottom:20px;border-radius:12px;box-shadow:0 10px 30px rgba(0,0,0,0.5);}
+.card h3{margin-bottom:10px;}
+input{width:100%;padding:12px;background:#2a2a2a;border:none;border-radius:8px;color:white;font-size:16px;margin-top:8px;}
+button{border:none;background:#c59d5f;padding:10px 15px;border-radius:8px;color:black;font-weight:bold;cursor:pointer;transition:0.2s;margin-top:10px;}
+button:hover{transform:scale(1.05);background:#e6b76b;}
+.agendamento{background:#2a2a2a;padding:15px;border-radius:10px;margin-top:10px;display:flex;justify-content:space-between;align-items:center;}
+.info{line-height:1.6;}
+</style>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.35.0/dist/supabase.min.js"></script>
+<script>
+const SUPABASE_URL = 'https://SEU_PROJETO.supabase.co'; // substitua
+const SUPABASE_ANON_KEY = 'SUA_CHAVE_ANONIMA'; // substitua
+const supabase = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+let barbeiroLogado = null;
+let barbeariaLogada = null;
+
+// Cadastro/Login inicial
+async function cadastroLoginInicial(){
+  const nomeBarbeiro = prompt("Digite seu nome:");
+  const email = prompt("Digite seu email:");
+  const nomeBarbearia = prompt("Nome da barbearia:");
+  const rua = prompt("Rua:");
+  const bairro = prompt("Bairro:");
+  const cidade = prompt("Cidade:");
+  const estado = prompt("Estado:");
+
+  if(!nomeBarbeiro || !email || !nomeBarbearia || !rua || !bairro || !cidade || !estado){
+    return alert("Preencha todos os campos!");
+  }
+
+  // Criar/verificar barbearia
+  let { data: barbearia } = await supabase
+    .from('barbearias')
+    .select('*')
+    .ilike('nome', nomeBarbearia)
+    .single();
+
+  if(!barbearia){
+    const { data: novaBarb } = await supabase
+      .from('barbearias')
+      .insert([{ nome: nomeBarbearia, rua, bairro, cidade, estado }])
+      .select()
+      .single();
+    barbearia = novaBarb;
+  }
+  barbeariaLogada = barbearia;
+
+  // Criar/verificar barbeiro
+  let { data: barbeiro } = await supabase
+    .from('barbeiros')
+    .select('*')
+    .eq('email', email)
+    .single();
+
+  if(!barbeiro){
+    const { data: novoBarbeiro } = await supabase
+      .from('barbeiros')
+      .insert([{ nome: nomeBarbeiro, email: email, barbearia_id: barbearia.id }])
+      .select()
+      .single();
+    barbeiroLogado = novoBarbeiro;
+  } else {
+    barbeiroLogado = barbeiro;
+  }
+
+  alert("Cadastro concluído! Agora você verá sua agenda.");
+  document.getElementById('loginDiv').style.display = 'none';
+  document.getElementById('agendaDiv').style.display = 'block';
+  document.getElementById('linkDiv').style.display = 'block';
+  mostrarLinkClientes();
+  carregarAgenda();
+}
+
+// Carregar agenda
+async function carregarAgenda(){
+  if(!barbeiroLogado) return alert("Faça login primeiro");
+  const data = document.getElementById("data").value;
+  const agendaDiv = document.getElementById("agenda");
+  agendaDiv.innerHTML = "";
+  if(!data) return;
+
+  const { data: agendamentos, error } = await supabase
+    .from('agendamentos')
+    .select('*')
+    .eq('barbearia_id', barbeariaLogada.id)
+    .eq('data', data)
+    .order('hora', {ascending:true});
+
+  if(error){ console.error(error); agendaDiv.innerHTML="<p>Erro ao carregar agendamentos</p>"; return;}
+  if(!agendamentos || agendamentos.length===0){ agendaDiv.innerHTML="<p>Nenhum agendamento</p>"; return;}
+
+  agendamentos.forEach(a=>{
+    agendaDiv.innerHTML += `
+      <div class="agendamento">
+        <div class="info">
+          <strong>${a.hora}</strong><br>
+          ${a.nome_cliente}<br>
+          ${a.servico_nome}<br>
+          📞 ${a.telefone_cliente}
+        </div>
+        <button onclick="cancelar('${a.id}')">Cancelar</button>
+      </div>
+    `;
+  });
+}
+
+// Cancelar agendamento
+async function cancelar(id){
+  const { error } = await supabase.from('agendamentos').delete().eq('id', id);
+  if(error){ console.error(error); alert("Erro ao cancelar"); return;}
+  carregarAgenda();
+}
+
+// Mostrar link para clientes
+function mostrarLinkClientes(){
+  const url = `${window.location.origin}/cliente.html?barbearia=${barbeariaLogada.id}`;
+  document.getElementById("linkClientes").value = url;
+}
+
+// Copiar link
+function copiarLink(){
+  const input = document.getElementById("linkClientes");
+  input.select();
+  input.setSelectionRange(0,99999);
+  document.execCommand("copy");
+  alert("Link copiado! Pode enviar aos clientes ou colocar na bio do Instagram.");
+}
+</script>
+</head>
+<body>
+<div class="container">
+<h1>💈 Painel do Barbeiro</h1>
+
+<div id="loginDiv" class="card">
+<h3>Cadastro/Login Inicial</h3>
+<button onclick="cadastroLoginInicial()">Iniciar Cadastro</button>
+</div>
+
+<div id="agendaDiv" class="card" style="display:none;">
+<h3>Selecionar Data</h3>
+<input type="date" id="data" onchange="carregarAgenda()">
+<h3>Agendamentos do Dia</h3>
+<div id="agenda"></div>
+</div>
+
+<div id="linkDiv" class="card" style="display:none;">
+<h3>Link para Clientes</h3>
+<input type="text" id="linkClientes" readonly>
+<button onclick="copiarLink()">Copiar Link</button>
+</div>
+</div>
+</body>
+</html>
